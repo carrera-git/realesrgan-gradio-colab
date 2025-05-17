@@ -55,7 +55,7 @@ def process_video(input_video, width, height, aspect_mode):
     if aspect_mode == "pad":
         vf_filter = f"scale=w='min({width},iw*{height}/ih)':h='min({height},ih*{width}/iw)':force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
     elif aspect_mode == "crop":
-        vf_filter = f"scale='if(gt(a,{width}/{height}),{width},-1)':'if(gt(a,{width}/{height}),-1,{height})',crop={width}:{height}"
+        vf_filter = f"scale={width}:{height}:force_original_aspect_ratio=decrease,crop={width}:{height}"
     elif aspect_mode == "blurred-fill":
         vf_filter = f"split[main][bg];[bg]scale={width}:{height},boxblur=20[blurred];[main]scale='min({width},iw*{height}/ih)':'min({height},ih*{width}/iw)':force_original_aspect_ratio=decrease[scaled];[blurred][scaled]overlay=(W-w)/2:(H-h)/2"
     else:
@@ -86,7 +86,7 @@ demo = gr.Interface(
         gr.Video(label="📥 원본 프리뷰"),
         gr.Video(label="📤 결과 영상")
     ],
-    title="🎞 AI 영상 보정 + 정확한 중앙 크롭 + 블러필 + 자동저장",
+    title="🎞 정중앙 Crop 완벽 적용 + AI 보정 + Fill + 자동저장",
     allow_flagging="never"
 )
 

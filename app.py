@@ -49,14 +49,26 @@ def process_video(input_video, width, height, aspect_mode):
 
     shutil.copy(input_video, input_path)
     original_w, original_h = get_video_resolution(input_path)
-
     enhance_msg = upscale_if_needed(input_path, width, height, enhanced_path)
+
+    input_aspect = original_w / original_h
+    target_aspect = width / height
 
     if aspect_mode == "pad":
         vf_filter = f"scale=w='min({width},iw*{height}/ih)':h='min({height},ih*{width}/iw)':force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
     elif aspect_mode == "crop":
-        aspect_ratio = f"{width}/{height}"
-        vf_filter = f"scale='if(gt(iw/ih,{aspect_ratio}),-1,{width})':'if(gt(iw/ih,{aspect_ratio}),{height},-1)',crop={width}:{height}"
+        # 먼저 원본을 충분히 크게 만든다
+        if input_aspect > target_aspect:
+            # 입력이 더 가로로 길다 → 높이 맞추고 가로 잘라
+            intermediate_h = height
+            intermediate_w = ceil(height * input_aspect)
+        else:
+            # 입력이 더 세로로 길다 → 가로 맞추고 세로 잘라
+            intermediate_w = width
+            intermediate_h = ceil(width / input_aspect)
+        x_offset = f"(in_w-{width})/2"
+        y_offset = f"(in_h-{height})/2"
+        vf_filter = f"scale={intermediate_w}:{intermediate_h},crop={width}:{height}:{x_offset}:{y_offset}"
     elif aspect_mode == "blurred-fill":
         vf_filter = f"split[main][bg];[bg]scale={width}:{height},boxblur=20[blurred];[main]scale='min({width},iw*{height}/ih)':'min({height},ih*{width}/iw)':force_original_aspect_ratio=decrease[scaled];[blurred][scaled]overlay=(W-w)/2:(H-h)/2"
     else:
@@ -87,7 +99,7 @@ demo = gr.Interface(
         gr.Video(label="📥 원본 프리뷰"),
         gr.Video(label="📤 결과 영상")
     ],
-    title="🎞 크롭 진짜 작동함 + 비율 계산 완비 + AI 강화",
+    title="🎞 비율 계산 + 스케일 조정 + 진짜 정중앙 Crop",
     allow_flagging="never"
 )
 

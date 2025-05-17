@@ -24,31 +24,37 @@ def get_video_resolution(path):
     cap.release()
     return width, height
 
-def upscale_video(input_video, width, height, aspect_mode):
+def upscale_if_needed(input_path, target_width, target_height, out_path):
+    original_w, original_h = get_video_resolution(input_path)
+    if original_w >= target_width and original_h >= target_height:
+        shutil.copy(input_path, out_path)
+        return "✅ 원본 해상도가 충분해 업스케일 생략"
+    else:
+        subprocess.call([
+            "ffmpeg", "-i", input_path,
+            "-vf", f"scale={target_width}:{target_height}:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,hqdn3d",
+            "-c:v", "libx264", "-preset", "fast", out_path
+        ])
+        return f"🔼 업스케일 및 보정 적용: {original_w}x{original_h} → {target_width}x{target_height}"
+
+def process_video(input_video, width, height, aspect_mode):
     os.makedirs("input", exist_ok=True)
     os.makedirs("output", exist_ok=True)
-    os.makedirs("enhanced", exist_ok=True)
+    os.makedirs("work", exist_ok=True)
 
     input_path = "input/input.mp4"
-    enhanced_path = "enhanced/enhanced.mp4"
+    enhanced_path = "work/enhanced.mp4"
     output_name = get_next_filename()
     output_path = os.path.join("output", output_name)
 
+    # 파일 복사
     shutil.copy(input_video, input_path)
-
     original_w, original_h = get_video_resolution(input_path)
 
-    # 프리뷰용 해상도 표시
-    preview_msg = f"📏 원본 해상도: {original_w}x{original_h}"
+    # 업스케일 + 화질 보정
+    enhance_msg = upscale_if_needed(input_path, width, height, enhanced_path)
 
-    # AI 필터 흉내 (sharpen + denoise)
-    subprocess.call([
-        "ffmpeg", "-i", input_path,
-        "-vf", "unsharp=5:5:1.0:5:5:0.0,hqdn3d",
-        "-c:v", "libx264", "-preset", "fast", enhanced_path
-    ])
-
-    # 필터 조합
+    # 후처리 필터
     if aspect_mode == "pad":
         vf_filter = f"scale='min({width},iw*{height}/ih)':'min({height},ih*{width}/iw)':force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
     elif aspect_mode == "crop":
@@ -58,7 +64,7 @@ def upscale_video(input_video, width, height, aspect_mode):
     else:
         vf_filter = f"scale={width}:{height}"
 
-    # 최종 리사이즈 시도
+    # 최종 변환
     try:
         subprocess.run([
             "ffmpeg", "-i", enhanced_path,
@@ -66,12 +72,14 @@ def upscale_video(input_video, width, height, aspect_mode):
             "-c:v", "libx264", "-preset", "fast", output_path
         ], check=True)
     except subprocess.CalledProcessError:
-        return "⚠️ 변환 실패! 요청된 해상도보다 원본이 작을 수 있어요.", None
+        return f"⚠️ 처리 실패: 원본 해상도 또는 비율이 요청한 출력에 적합하지 않음", None, None
 
-    return preview_msg, output_path
+    # 해상도 텍스트 + 출력 파일 + 원본 프리뷰
+    info = f"📏 원본 해상도: {original_w}x{original_h}\n{enhance_msg}"
+    return info, input_path, output_path
 
 demo = gr.Interface(
-    fn=upscale_video,
+    fn=process_video,
     inputs=[
         gr.File(label="Input Video (mp4)", file_types=[".mp4"]),
         gr.Number(label="Output Width (예: 1920)"),
@@ -79,10 +87,11 @@ demo = gr.Interface(
         gr.Radio(["pad", "crop", "blurred-fill"], label="Aspect Ratio Mode")
     ],
     outputs=[
-        gr.Textbox(label="Original Resolution"),
-        gr.Video(label="Final Output")
+        gr.Textbox(label="처리 정보"),
+        gr.Video(label="📥 원본 프리뷰"),
+        gr.Video(label="📤 결과 영상")
     ],
-    title="🎥 AI Video Enhancer + Aspect Ratio Options + Preview",
+    title="🎞 AI 영상 업스케일 + 비율 처리 + 화질 보정 + 자동 파일명",
     allow_flagging="never"
 )
 

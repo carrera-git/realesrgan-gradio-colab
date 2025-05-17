@@ -23,7 +23,7 @@ def extract_frames(video_path):
 
 def run_realesrgan():
     subprocess.call([
-        "python", "Real-ESRGAN/inference_realesrgan.py",
+        "python", "inference_realesrgan.py",
         "-n", "RealESRGAN_x4plus",
         "-i", "frames_in",
         "-o", "frames_out",

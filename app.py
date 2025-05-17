@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import cv2
+import math  # ← 누락된 부분 추가!
 
 counter_file = "counter.txt"
 if not os.path.exists(counter_file):
@@ -57,15 +58,12 @@ def process_video(input_video, width, height, aspect_mode):
     if aspect_mode == "pad":
         vf_filter = f"scale=w='min({width},iw*{height}/ih)':h='min({height},ih*{width}/iw)':force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
     elif aspect_mode == "crop":
-        # 먼저 원본을 충분히 크게 만든다
         if input_aspect > target_aspect:
-            # 입력이 더 가로로 길다 → 높이 맞추고 가로 잘라
             intermediate_h = height
-            intermediate_w = ceil(height * input_aspect)
+            intermediate_w = math.ceil(height * input_aspect)
         else:
-            # 입력이 더 세로로 길다 → 가로 맞추고 세로 잘라
             intermediate_w = width
-            intermediate_h = ceil(width / input_aspect)
+            intermediate_h = math.ceil(width / input_aspect)
         x_offset = f"(in_w-{width})/2"
         y_offset = f"(in_h-{height})/2"
         vf_filter = f"scale={intermediate_w}:{intermediate_h},crop={width}:{height}:{x_offset}:{y_offset}"
@@ -99,7 +97,7 @@ demo = gr.Interface(
         gr.Video(label="📥 원본 프리뷰"),
         gr.Video(label="📤 결과 영상")
     ],
-    title="🎞 비율 계산 + 스케일 조정 + 진짜 정중앙 Crop",
+    title="🎞 엉덩이 때찌 사면된 진짜 최종판",
     allow_flagging="never"
 )
 

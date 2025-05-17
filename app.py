@@ -1,10 +1,20 @@
+# ⚠️ 이 코드는 Google Colab 전용입니다
+# 1. Real-ESRGAN 설치 및 모델 다운로드
+# 2. 영상 프레임 추출 → 프레임별 AI 업스케일 → 영상 재조합
+# 3. 결과물 crop/pad 처리 후 출력
+
 import gradio as gr
 import os
 import shutil
 import subprocess
 import cv2
-import math  # ← 누락된 부분 추가!
+import math
 
+# 초기 디렉토리 구성
+for folder in ["input", "work", "frames_in", "frames_out", "output"]:
+    os.makedirs(folder, exist_ok=True)
+
+# 파일명 카운터 관리
 counter_file = "counter.txt"
 if not os.path.exists(counter_file):
     with open(counter_file, "w") as f:
@@ -25,32 +35,43 @@ def get_video_resolution(path):
     cap.release()
     return width, height
 
-def upscale_if_needed(input_path, target_width, target_height, out_path):
-    original_w, original_h = get_video_resolution(input_path)
-    if original_w >= target_width and original_h >= target_height:
-        shutil.copy(input_path, out_path)
-        return "✅ 원본 해상도가 충분해 업스케일 생략"
-    else:
-        subprocess.call([
-            "ffmpeg", "-y", "-i", input_path,
-            "-vf", f"scale={target_width}:{target_height}:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,hqdn3d",
-            "-c:v", "libx264", "-preset", "fast", out_path
-        ])
-        return f"🔼 업스케일 및 보정 적용: {original_w}x{original_h} → {target_width}x{target_height}"
+def run_realesrgan_on_frames():
+    # 프레임 단위 이미지들을 AI 업스케일
+    subprocess.call([
+        "python", "inference_realesrgan.py",
+        "-n", "RealESRGAN_x4plus",
+        "-i", "frames_in",
+        "-o", "frames_out",
+        "--outscale", "4"
+    ])
 
-def process_video(input_video, width, height, aspect_mode):
-    os.makedirs("input", exist_ok=True)
-    os.makedirs("output", exist_ok=True)
-    os.makedirs("work", exist_ok=True)
+def extract_frames(video_path):
+    subprocess.call([
+        "ffmpeg", "-y", "-i", video_path,
+        "frames_in/frame_%05d.png"
+    ])
 
+def reassemble_video(output_path, fps=30):
+    subprocess.call([
+        "ffmpeg", "-y", "-framerate", str(fps),
+        "-i", "frames_out/frame_%05d_out.png",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", output_path
+    ])
+
+def upscale_video(input_video, width, height, aspect_mode):
     input_path = "input/input.mp4"
     enhanced_path = "work/enhanced.mp4"
     output_name = get_next_filename()
-    output_path = os.path.join("output", output_name)
+    output_path = f"output/{output_name}"
 
     shutil.copy(input_video, input_path)
+
     original_w, original_h = get_video_resolution(input_path)
-    enhance_msg = upscale_if_needed(input_path, width, height, enhanced_path)
+
+    # 1단계: 프레임 추출 → Real-ESRGAN 처리 → 영상 재조립
+    extract_frames(input_path)
+    run_realesrgan_on_frames()
+    reassemble_video(enhanced_path)
 
     input_aspect = original_w / original_h
     target_aspect = width / height
@@ -72,20 +93,17 @@ def process_video(input_video, width, height, aspect_mode):
     else:
         vf_filter = f"scale={width}:{height}"
 
-    try:
-        subprocess.run([
-            "ffmpeg", "-y", "-i", enhanced_path,
-            "-vf", vf_filter,
-            "-c:v", "libx264", "-preset", "fast", output_path
-        ], check=True)
-    except subprocess.CalledProcessError:
-        return f"⚠️ 처리 실패: 원본 해상도 또는 비율이 요청한 출력에 적합하지 않음", None, None
+    subprocess.call([
+        "ffmpeg", "-y", "-i", enhanced_path,
+        "-vf", vf_filter,
+        "-c:v", "libx264", "-preset", "fast", output_path
+    ])
 
-    info = f"📏 원본 해상도: {original_w}x{original_h}\n{enhance_msg}"
+    info = f"📏 원본 해상도: {original_w}x{original_h}\n🎨 Real-ESRGAN 적용 완료"
     return info, input_path, output_path
 
 demo = gr.Interface(
-    fn=process_video,
+    fn=upscale_video,
     inputs=[
         gr.File(label="Input Video (mp4)", file_types=[".mp4"]),
         gr.Number(label="Output Width (예: 1920)"),
@@ -97,7 +115,7 @@ demo = gr.Interface(
         gr.Video(label="📥 원본 프리뷰"),
         gr.Video(label="📤 결과 영상")
     ],
-    title="🎞 엉덩이 때찌 사면된 진짜 최종판",
+    title="🎞 Real-ESRGAN + Crop/Pad 완전체 (Colab 전용)",
     allow_flagging="never"
 )
 

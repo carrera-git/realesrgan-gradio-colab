@@ -31,7 +31,7 @@ def upscale_if_needed(input_path, target_width, target_height, out_path):
         return "✅ 원본 해상도가 충분해 업스케일 생략"
     else:
         subprocess.call([
-            "ffmpeg", "-i", input_path,
+            "ffmpeg", "-y", "-i", input_path,
             "-vf", f"scale={target_width}:{target_height}:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,hqdn3d",
             "-c:v", "libx264", "-preset", "fast", out_path
         ])
@@ -56,18 +56,19 @@ def process_video(input_video, width, height, aspect_mode):
 
     # 후처리 필터
     if aspect_mode == "pad":
-        vf_filter = f"scale='min({width},iw*{height}/ih)':'min({height},ih*{width}/iw)':force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
+        vf_filter = f"scale=w='min({width},iw*{height}/ih)':h='min({height},ih*{width}/iw)':force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
     elif aspect_mode == "crop":
-        vf_filter = f"scale='if(gt(a,{width}/{height}),{width},-1)':'if(gt(a,{width}/{height}),-1,{height})',crop={width}:{height}"
+        vf_filter = f"scale=w='if(gt(a,{width}/{height}),{width},-1)':h='if(gt(a,{width}/{height}),-1,{height})',crop={width}:{height}"
     elif aspect_mode == "blurred-fill":
-        vf_filter = f"scale='min({width},iw*{height}/ih)':'min({height},ih*{width}/iw)':force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,boxblur=10:1"
+        # split 화면 두 개로 복제 → 하나는 블러 처리, 다른 하나는 원본 → overlay
+        vf_filter = f"split[main][bg];[bg]scale={width}:{height},boxblur=20[blurred];[main]scale='min({width},iw*{height}/ih)':'min({height},ih*{width}/iw)':force_original_aspect_ratio=decrease[scaled];[blurred][scaled]overlay=(W-w)/2:(H-h)/2"
     else:
         vf_filter = f"scale={width}:{height}"
 
     # 최종 변환
     try:
         subprocess.run([
-            "ffmpeg", "-i", enhanced_path,
+            "ffmpeg", "-y", "-i", enhanced_path,
             "-vf", vf_filter,
             "-c:v", "libx264", "-preset", "fast", output_path
         ], check=True)
@@ -91,7 +92,7 @@ demo = gr.Interface(
         gr.Video(label="📥 원본 프리뷰"),
         gr.Video(label="📤 결과 영상")
     ],
-    title="🎞 AI 영상 업스케일 + 비율 처리 + 화질 보정 + 자동 파일명",
+    title="🎞 AI 영상 보정 + 비율 옵션 + 블러필 + 자동저장 완전체",
     allow_flagging="never"
 )
 

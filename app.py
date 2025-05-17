@@ -5,8 +5,11 @@ import subprocess
 def upscale_video(input_video, scale):
     os.makedirs("input", exist_ok=True)
     os.makedirs("output", exist_ok=True)
-    input_path = "input/input.mp4"
-    output_path = "output/output.mp4"
+import shutil
+
+input_path = "input/input.mp4"
+shutil.copy(input_video.name, input_path)
+
 
     # 영상 저장
     input_video.save(input_path)
